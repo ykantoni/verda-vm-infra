@@ -1,31 +1,31 @@
-variable "instance_count" {
-  description = "Number of CPU VMs to create."
-  type        = number
-  default     = 2
-}
-
 variable "name_prefix" {
-  description = "Prefix for instance hostnames (e.g. k8s-node-1, k8s-node-2)."
+  description = "Prefix for instance hostnames (e.g. k8s-cp1, k8s-worker1)."
   type        = string
-  default     = "k8s-node"
+  default     = "k8s"
 }
 
-variable "instance_type" {
-  description = "Verda CPU instance type. Examples: CPU.4V.16G, CPU.8V.32G, CPU-TURIN.4V.16G."
+variable "cp_instance_type" {
+  description = "Verda CPU instance type for the control-plane node. Examples: CPU.4V.16G, CPU.8V.32G, CPU-TURIN.4V.16G."
+  type        = string
+  default     = "CPU.4V.16G"
+}
+
+variable "worker_instance_type" {
+  description = "Verda CPU instance type for the worker node. Examples: CPU.4V.16G, CPU.8V.32G, CPU-TURIN.4V.16G."
   type        = string
   default     = "CPU.4V.16G"
 }
 
 variable "image" {
-  description = "Verda Kubernetes OS image. Other versions: 26.04.cuda13.2.kubernetes-1.33.13, -1.34.9, -1.35.8, -1.37.0."
+  description = "Verda OS image. A plain Ubuntu image is used since RKE2 installs its own Kubernetes components."
   type        = string
-  default     = "26.04.cuda13.2.kubernetes-1.36.4"
+  default     = "26.04.base"
 }
 
 variable "location" {
-  description = "Verda location code (FIN-01, FIN-02, FIN-03)."
+  description = "Verda location code (FIN-01, FIN-02, FIN-03). Check `verda availability` first — not every location has spare capacity for every instance type at any given time."
   type        = string
-  default     = "FIN-01"
+  default     = "FIN-03"
 }
 
 variable "os_volume_size" {
@@ -38,4 +38,10 @@ variable "ssh_public_key_path" {
   description = "Path to the SSH public key added to the instances."
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
+}
+
+variable "rke2_version" {
+  description = "RKE2 version to install (e.g. v1.31.4+rke2r1). Leave empty to install the latest stable release."
+  type        = string
+  default     = ""
 }
