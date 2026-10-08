@@ -73,6 +73,14 @@ resource "null_resource" "fetch_kubeconfig" {
   }
 
   provisioner "local-exec" {
-    command = "ssh -o StrictHostKeyChecking=accept-new -i ${var.ssh_private_key_path} ${var.ssh_user}@${module.cp1.ip} cat /etc/rancher/rke2/rke2.yaml | sed 's/127.0.0.1/${module.cp1.ip}/' > ${path.module}/.terraform-kubeconfig.yaml"
+    # UserKnownHostsFile=/dev/null: Verda reuses IPs across VMs, so
+    # known_hosts may hold a *different* host's key for this address —
+    # accept-new alone refuses to connect in that case (correctly treating
+    # it as a changed key), so there's nothing worth pinning here anyway.
+    # set -o pipefail (needs bash — /bin/sh here is dash, which lacks it):
+    # without it, a failed ssh still lets `sed`/the redirect "succeed" on
+    # empty input, silently writing an empty file instead of erroring.
+    interpreter = ["/bin/bash", "-c"]
+    command     = "set -o pipefail; ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} ${var.ssh_user}@${module.cp1.ip} cat /etc/rancher/rke2/rke2.yaml | sed 's/127.0.0.1/${module.cp1.ip}/' > ${path.module}/.terraform-kubeconfig.yaml"
   }
 }

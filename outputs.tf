@@ -27,10 +27,10 @@ output "worker1_ip" {
 }
 
 output "ssh_commands" {
-  description = "SSH commands for each node, usable from any machine with the matching private key. Accepts a new host key automatically (no yes/no prompt), since these IPs get reassigned to fresh VMs often."
+  description = "SSH commands for each node, usable from any machine with the matching private key. Skips host-key pinning entirely (not just accepting new keys) since Verda reuses IPs across unrelated VMs — a previous occupant's key would otherwise make this fail with \"REMOTE HOST IDENTIFICATION HAS CHANGED\"."
   value = {
-    cp1     = "ssh -o StrictHostKeyChecking=accept-new root@${module.cp1.ip}"
-    worker1 = "ssh -o StrictHostKeyChecking=accept-new root@${module.worker1.ip}"
+    cp1     = "ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null root@${module.cp1.ip}"
+    worker1 = "ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null root@${module.worker1.ip}"
   }
 }
 
@@ -41,7 +41,7 @@ output "hourly_cost_usd" {
 
 output "kubeconfig_command" {
   description = "Fetches the kubeconfig from the control-plane node and rewrites it to use the public IP, so kubectl works from outside Verda Cloud. Written to ~/verda_kubeconfig.yaml, in the local user's home directory, regardless of the current directory."
-  value       = "ssh -o StrictHostKeyChecking=accept-new ${var.ssh_user}@${module.cp1.ip} cat /etc/rancher/rke2/rke2.yaml | sed 's/127.0.0.1/${module.cp1.ip}/' > ~/verda_kubeconfig.yaml"
+  value       = "ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null ${var.ssh_user}@${module.cp1.ip} cat /etc/rancher/rke2/rke2.yaml | sed 's/127.0.0.1/${module.cp1.ip}/' > ~/verda_kubeconfig.yaml"
 }
 
 output "api_server_url" {
