@@ -16,22 +16,22 @@ output "worker1" {
   }
 }
 
+output "cp1_ip" {
+  description = "Public IP of the control-plane node, in a form easy to consume from another repo (terraform output -raw cp1_ip)."
+  value       = module.cp1.ip
+}
+
+output "worker1_ip" {
+  description = "Public IP of the worker node, in a form easy to consume from another repo (terraform output -raw worker1_ip)."
+  value       = module.worker1.ip
+}
+
 output "ssh_commands" {
   description = "SSH commands for each node, usable from any machine with the matching private key."
   value = {
     cp1     = "ssh root@${module.cp1.ip}"
     worker1 = "ssh root@${module.worker1.ip}"
   }
-}
-
-output "kubeconfig_command" {
-  description = "Fetches the kubeconfig from cp1 and rewrites it to use the public IP, so kubectl works from outside Verda Cloud."
-  value       = "ssh root@${module.cp1.ip} cat /etc/rancher/rke2/rke2.yaml | sed 's/127.0.0.1/${module.cp1.ip}/' > kubeconfig.yaml"
-}
-
-output "api_server_url" {
-  description = "Kubernetes API server address reachable from outside Verda Cloud."
-  value       = "https://${module.cp1.ip}:6443"
 }
 
 output "hourly_cost_usd" {

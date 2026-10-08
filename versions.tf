@@ -6,10 +6,6 @@ terraform {
       source  = "verda-cloud/verda"
       version = "~> 1.1"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 }
 

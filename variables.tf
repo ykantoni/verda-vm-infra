@@ -17,7 +17,7 @@ variable "worker_instance_type" {
 }
 
 variable "image" {
-  description = "Verda OS image. A plain Ubuntu image is used since RKE2 installs its own Kubernetes components."
+  description = "Verda OS image. A plain Ubuntu image is used; Kubernetes is installed separately by verda-k8s-infra."
   type        = string
   default     = "26.04.base"
 }
@@ -38,10 +38,4 @@ variable "ssh_public_key_path" {
   description = "Path to the SSH public key added to the instances."
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
-}
-
-variable "rke2_version" {
-  description = "RKE2 version to install (e.g. v1.31.4+rke2r1). Leave empty to install the latest stable release."
-  type        = string
-  default     = ""
 }
