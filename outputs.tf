@@ -27,10 +27,10 @@ output "worker1_ip" {
 }
 
 output "ssh_commands" {
-  description = "SSH commands for each node, usable from any machine with the matching private key."
+  description = "SSH commands for each node, usable from any machine with the matching private key. Accepts a new host key automatically (no yes/no prompt), since these IPs get reassigned to fresh VMs often."
   value = {
-    cp1     = "ssh root@${module.cp1.ip}"
-    worker1 = "ssh root@${module.worker1.ip}"
+    cp1     = "ssh -o StrictHostKeyChecking=accept-new root@${module.cp1.ip}"
+    worker1 = "ssh -o StrictHostKeyChecking=accept-new root@${module.worker1.ip}"
   }
 }
 
