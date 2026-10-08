@@ -38,3 +38,13 @@ output "hourly_cost_usd" {
   description = "Combined price per hour of both nodes."
   value       = module.cp1.price_per_hour + module.worker1.price_per_hour
 }
+
+output "kubeconfig_command" {
+  description = "Fetches the kubeconfig from the control-plane node and rewrites it to use the public IP, so kubectl works from outside Verda Cloud. Written to ~/verda_kubeconfig.yaml, in the local user's home directory, regardless of the current directory."
+  value       = "ssh -o StrictHostKeyChecking=accept-new ${var.ssh_user}@${module.cp1.ip} cat /etc/rancher/rke2/rke2.yaml | sed 's/127.0.0.1/${module.cp1.ip}/' > ~/verda_kubeconfig.yaml"
+}
+
+output "api_server_url" {
+  description = "Kubernetes API server address reachable from outside Verda Cloud."
+  value       = "https://${module.cp1.ip}:6443"
+}

@@ -6,6 +6,14 @@ terraform {
       source  = "verda-cloud/verda"
       version = "~> 1.1"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
   }
 
   # path is intentionally omitted: the local backend then defaults to
