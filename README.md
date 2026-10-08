@@ -143,15 +143,17 @@ just vm-apply
 ```
 
 See the root [Justfile](../Justfile). `just vm-init` runs `terraform init`
-with this repo's state path pinned to an absolute path
-(`verda-vm-infra/terraform.tfstate`, computed from the Justfile's own
-location) via `-backend-config` — the same path `verda-k8s-infra` is told
-to look for via `TF_VAR_tfstate_location` in its own recipes. Because the
-Justfile computes this itself every time rather than trusting whatever
-might already be exported in your shell, there's no `TF_VAR_tfstate_location`
-left to go stale. You can still run plain `terraform init`/`plan`/`apply`
-directly inside this directory if you prefer — it just falls back to the
-same default path anyway.
+with this repo's state path pinned via `-backend-config` to
+`TF_VAR_tfstate_location` if that's set in your shell, or else to an
+absolute default (`verda-vm-infra/terraform.tfstate`, computed from the
+Justfile's own location) — the same value every `k8s-*` recipe exports for
+`verda-k8s-infra` to look for. **Check `echo $TF_VAR_tfstate_location`
+before running `vm-init`/`vm-apply`** if you're not deliberately relocating
+state: since it's honored here too now, a stale value will point this
+repo's *real* state at the wrong file, not just `verda-k8s-infra`'s lookup
+of it. You can still run plain `terraform init`/`plan`/`apply` directly
+inside this directory if you prefer — it ignores the variable and always
+uses the same default path.
 
 When the apply finishes, Terraform prints each VM's IP address and an SSH command:
 
@@ -231,8 +233,8 @@ destroyed it separately): `just vm-destroy`.
 - **`terraform plan`/`apply` says there's nothing created, but VMs exist in
   the console (or vice versa):** This repo's backend is pointed at the
   wrong file. Check `cat .terraform/terraform.tfstate` (the backend
-  pointer, not your actual state) for the `path` it's actually using, then
-  run `just vm-init` from the `verda-cloud` root to reset it to the one
-  canonical path — it recomputes that path itself every time rather than
-  trusting any environment variable, so this should only happen if you've
-  run `terraform init -backend-config=...` by hand with something else.
+  pointer, not your actual state) for the `path` it's actually using. If
+  it's not where you expect, check `echo $TF_VAR_tfstate_location` — the
+  Justfile honors it, so a stale export is the most likely cause. `unset`
+  it (or fix it) and re-run `just vm-init` to reset the backend to the
+  right path.

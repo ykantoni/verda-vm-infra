@@ -1,8 +1,0 @@
-# Copy to terraform.tfvars and adjust as needed.
-name_prefix           = "k8s"
-cp_instance_type      = "CPU.4V.16G"
-worker_instance_type  = "CPU.4V.16G"
-image                 = "26.04.base"
-location              = "FIN-03"
-os_volume_size        = 100
-ssh_public_key_path   = "~/.ssh/id_ed25519.pub"
