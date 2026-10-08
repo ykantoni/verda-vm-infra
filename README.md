@@ -134,11 +134,24 @@ verda availability --location FIN-03 --type CPU.4V.16G
 
 ## 4. Deploy
 
+From the `verda-cloud` root (the parent directory containing both this repo
+and `verda-k8s-infra` as sibling checkouts):
+
 ```bash
-terraform init
-terraform plan
-terraform apply
+just vm-init
+just vm-apply
 ```
+
+See the root [Justfile](../Justfile). `just vm-init` runs `terraform init`
+with this repo's state path pinned to an absolute path
+(`verda-vm-infra/terraform.tfstate`, computed from the Justfile's own
+location) via `-backend-config` — the same path `verda-k8s-infra` is told
+to look for via `TF_VAR_tfstate_location` in its own recipes. Because the
+Justfile computes this itself every time rather than trusting whatever
+might already be exported in your shell, there's no `TF_VAR_tfstate_location`
+left to go stale. You can still run plain `terraform init`/`plan`/`apply`
+directly inside this directory if you prefer — it just falls back to the
+same default path anyway.
 
 When the apply finishes, Terraform prints each VM's IP address and an SSH command:
 
@@ -189,13 +202,16 @@ Point [`verda-k8s-infra`](https://github.com/ykantoni/verda-k8s-infra) at
 
 ## 7. Clean up
 
-The VMs bill by the hour until they are destroyed. Destroy `verda-k8s-infra`
-first if you've applied it (it has nothing of its own to bill, but its
-state references these VMs), then:
+The VMs bill by the hour until they are destroyed. From the `verda-cloud`
+root:
 
 ```bash
-terraform destroy
+just destroy
 ```
+
+This runs `k8s-destroy` then `vm-destroy`, in that order. To tear down
+only the VMs (if `verda-k8s-infra` was never applied, or you've already
+destroyed it separately): `just vm-destroy`.
 
 ## Troubleshooting
 
@@ -212,3 +228,11 @@ terraform destroy
   (your own network, a corporate proxy) blocks outbound port 22. If you've
   applied the `ufw` rule above, check it allows your current public IP:
   `ssh root@<ip> ufw status`.
+- **`terraform plan`/`apply` says there's nothing created, but VMs exist in
+  the console (or vice versa):** This repo's backend is pointed at the
+  wrong file. Check `cat .terraform/terraform.tfstate` (the backend
+  pointer, not your actual state) for the `path` it's actually using, then
+  run `just vm-init` from the `verda-cloud` root to reset it to the one
+  canonical path — it recomputes that path itself every time rather than
+  trusting any environment variable, so this should only happen if you've
+  run `terraform init -backend-config=...` by hand with something else.

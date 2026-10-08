@@ -7,6 +7,13 @@ terraform {
       version = "~> 1.1"
     }
   }
+
+  # path is intentionally omitted: the local backend then defaults to
+  # "terraform.tfstate", same as before. The verda-cloud repo's Justfile
+  # (`just vm-init`) supplies it explicitly via -backend-config instead, so
+  # this repo's state always lives at the one path verda-k8s-infra expects
+  # — a plain `terraform init` still works, it just uses the plain default.
+  backend "local" {}
 }
 
 # Credentials are read from the VERDA_CLIENT_ID and VERDA_CLIENT_SECRET
