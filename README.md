@@ -61,6 +61,72 @@ the other NodePorts below if that matters for your setup. `just endpoints`
 Argo CD/OpenBao/Prometheus/Grafana NodePorts, using the current cluster's
 actual IP.
 
+### Gateway API (additive, alongside the NodePorts above)
+
+Besides the per-app NodePorts, the bootstrap also enables
+[Gateway API](https://gateway-api.sigs.k8s.io/) support in Cilium
+(`gatewayAPI.enabled: true` on the `rke2-cilium` `HelmChartConfig`). The
+CRDs come from RKE2's own bundled `rke2-gateway-api-crd` chart, installed
+automatically — no separate CRD install needed. `gatewayClass.create` is
+set to `false` and a `GatewayClass` named `cilium` is created explicitly
+instead (with a `parametersRef` pointing at a `CiliumGatewayClassConfig`,
+covered below) — Cilium's own "auto" GatewayClass creation has no way to
+attach that reference. A single shared `Gateway` named `lab-gateway`
+(namespace `kube-system`, one HTTP listener on port 80) is created
+alongside it, plus an `HTTPRoute` for Longhorn's UI — since, like
+Longhorn itself, that one isn't Argo CD-managed. `verda-k8s-infra`'s
+OpenBao/Grafana/Prometheus get their own `HTTPRoute`s the same way, Argo
+CD-managed (see that repo's README).
+
+**Known startup race**: `cilium-operator` checks once, at its own
+startup, whether the Gateway API CRDs already exist; if RKE2's separate
+CRD-installing chart hasn't finished yet (routinely the case on a fresh
+cluster — it's a different, slower chart), the operator permanently
+disables Gateway API support for that process's lifetime, with no retry.
+The bootstrap script waits for the API server, waits for the CRDs, then
+restarts `cilium-operator` once to force it to re-check — this is what
+actually makes Gateway API reliably come up on a fresh cluster, not just
+the Helm value above.
+
+**Why NodePort, not LoadBalancer**: Verda terminates ports 80 and 443 on
+every VM's public IP at its own network edge — confirmed directly: both
+ports answer with a generic 404 even when nothing in the cluster is
+listening on them (no process, no iptables rule — `ss -tlnp` shows
+nothing bound). A `LoadBalancer`-type Service on port 80 is therefore
+unreachable here no matter what binds it in-cluster, and there's no
+Klipper/MetalLB/cloud-provider load balancer in this setup anyway (RKE2,
+unlike k3s, doesn't bundle one). A `CiliumGatewayClassConfig` named
+`cilium-nodeport` (referenced by the `GatewayClass` above) makes Cilium
+generate a `NodePort` Service instead — same mechanism every other app
+in this cluster already uses. The actual port is whatever Kubernetes
+assigns (`30000`-`32767`); there's no way to pin a specific number
+through Cilium's `CiliumGatewayClassConfig` (it only exposes `service.type`,
+not per-port values), so read it live rather than assuming one:
+
+```bash
+kubectl --kubeconfig ~/verda_kubeconfig.yaml -n kube-system get svc cilium-gateway-lab-gateway -o jsonpath='{.spec.ports[0].nodePort}'
+```
+
+`just endpoints` (from the `verda-cloud` root) does this for you and
+prints the full URLs.
+
+All four apps are multiplexed through that one NodePort by HTTP `Host`
+header. Since there's no real DNS here, point each hostname at a node's
+IP via `/etc/hosts` on whatever machine you're browsing from. `just
+generate` writes this mapping to `~/verda_gateway_hosts` (pointed at the
+worker node's IP — either node's works, since the NodePort binds on
+every node, but this keeps the mapping consistent across regenerations);
+append it with:
+
+```bash
+sudo tee -a /etc/hosts < ~/verda_gateway_hosts
+```
+
+Then open `http://longhorn.lab:<port>/` (etc.), using the port `just
+endpoints` printed. This is purely additive: every NodePort above keeps
+working exactly as before, this is just a second way to reach the same
+four apps through one port instead of four.
+
 ### Why 2 Longhorn replicas, not the usual 3
 
 Longhorn defaults to 3 replicas per volume for full redundancy, but this

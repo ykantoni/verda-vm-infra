@@ -34,10 +34,16 @@ service-cidr: "${service_cidr}"
 disable-kube-proxy: true
 CONFIG
 
-# Overrides the bundled rke2-cilium Helm chart: cluster identity, and the
-# kube-proxy replacement that disable-kube-proxy above requires. k8sServiceHost
+# Overrides the bundled rke2-cilium Helm chart: cluster identity, the
+# kube-proxy replacement that disable-kube-proxy above requires (k8sServiceHost
 # must be set explicitly in this mode, since there's no kube-proxy-provided
-# ClusterIP route for cilium-agent to reach the API server through on its own.
+# ClusterIP route for cilium-agent to reach the API server through on its
+# own), and Gateway API support. Gateway API's CRDs come from RKE2's own
+# bundled rke2-gateway-api-crd chart (installed automatically — RKE2, unlike
+# upstream Kubernetes, ships these itself) — no separate CRD install needed
+# here. gatewayClass.create is set to false since we create our own
+# GatewayClass below (with a parametersRef Cilium's "auto" mode has no way
+# to attach), rather than relying on Cilium's own auto-created one.
 mkdir -p /var/lib/rancher/rke2/server/manifests
 cat > /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml <<HELMCONFIG
 apiVersion: helm.cattle.io/v1
@@ -52,6 +58,10 @@ spec:
     kubeProxyReplacement: true
     k8sServiceHost: "$PUBLIC_IP"
     k8sServicePort: "6443"
+    gatewayAPI:
+      enabled: true
+      gatewayClass:
+        create: "false"
 HELMCONFIG
 
 # Longhorn isn't one of RKE2's bundled charts, so this uses HelmChart (not
@@ -83,11 +93,109 @@ spec:
         nodePort: 30093
 LONGHORNCONFIG
 
+# Shared Gateway API entry point (additive — every NodePort above still
+# works unchanged). Verda terminates ports 80/443 on every VM's public IP
+# at its own edge (confirmed directly: both ports answer with a generic
+# 404 even when nothing in the cluster is listening on them), so a
+# LoadBalancer-type Service bound to port 80 is unreachable here no matter
+# what binds it in-cluster — there's no cloud provider or Klipper/MetalLB
+# to hand it an external IP anyway. The CiliumGatewayClassConfig below
+# makes Cilium generate a NodePort Service instead — same mechanism every
+# other app in this cluster already uses. The actual port is whatever
+# Kubernetes assigns (30000-32767); read it live rather than assuming a
+# fixed number, e.g.:
+#   kubectl -n kube-system get svc cilium-gateway-lab-gateway -o jsonpath='{.spec.ports[0].nodePort}'
+# `just endpoints` (from the verda-cloud root) does this for you.
+#
+# One Gateway, one Service, multiplexed across apps by Host header via
+# each app's own HTTPRoute. allowedRoutes lets HTTPRoutes created in any
+# namespace (openbao, monitoring, this one) attach here without needing a
+# ReferenceGrant, since each HTTPRoute below lives in the same namespace
+# as the Service it routes to.
+#
+# Longhorn's HTTPRoute lives here, next to the Longhorn HelmChart above,
+# since (like Longhorn itself) it isn't Argo CD-managed. OpenBao's and the
+# kube-prometheus-stack's HTTPRoutes are Argo CD-managed instead — see
+# verda-k8s-infra's argo-apps/gateway-routes.yaml.
+cat > /var/lib/rancher/rke2/server/manifests/gateway.yaml <<GATEWAYCONFIG
+apiVersion: cilium.io/v2alpha1
+kind: CiliumGatewayClassConfig
+metadata:
+  name: cilium-nodeport
+  namespace: kube-system
+spec:
+  service:
+    type: NodePort
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cilium
+spec:
+  controllerName: io.cilium/gateway-controller
+  parametersRef:
+    group: cilium.io
+    kind: CiliumGatewayClassConfig
+    name: cilium-nodeport
+    namespace: kube-system
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: lab-gateway
+  namespace: kube-system
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: longhorn-ui
+  namespace: longhorn-system
+spec:
+  parentRefs:
+    - name: lab-gateway
+      namespace: kube-system
+  hostnames:
+    - "longhorn.lab"
+  rules:
+    - backendRefs:
+        - name: longhorn-frontend
+          port: 80
+GATEWAYCONFIG
+
 systemctl enable rke2-server.service
 systemctl start rke2-server.service
 
 ln -sf /var/lib/rancher/rke2/bin/kubectl /usr/local/bin/kubectl
 ln -sf /var/lib/rancher/rke2/bin/crictl /usr/local/bin/crictl
+
+# cilium-operator checks once at startup whether the Gateway API CRDs
+# exist (installed asynchronously by RKE2's own rke2-gateway-api-crd
+# chart) and, if they're not there yet, disables Gateway API support for
+# that process's lifetime — no retry. On a fresh cluster this is a real
+# race: cilium-operator routinely wins it, since its own chart install is
+# faster than the separate CRD chart's. Wait for the API server, wait for
+# the CRDs, then restart the operator once so it re-checks with them
+# present (idempotent/harmless if it already saw them in time).
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+export PATH="$PATH:/var/lib/rancher/rke2/bin"
+for i in $(seq 1 60); do
+  kubectl get --raw=/healthz >/dev/null 2>&1 && break
+  sleep 2
+done
+for i in $(seq 1 60); do
+  kubectl get crd gatewayclasses.gateway.networking.k8s.io >/dev/null 2>&1 && break
+  sleep 2
+done
+kubectl -n kube-system rollout restart deployment cilium-operator || true
 
 cat > /etc/profile.d/rke2.sh <<'PROFILE'
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
