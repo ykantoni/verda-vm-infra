@@ -77,6 +77,10 @@ spec:
       defaultClassReplicaCount: 2
     defaultSettings:
       defaultReplicaCount: 2
+    service:
+      ui:
+        type: NodePort
+        nodePort: 30093
 LONGHORNCONFIG
 
 systemctl enable rke2-server.service

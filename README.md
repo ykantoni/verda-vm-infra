@@ -53,6 +53,14 @@ gets installed.
   `verda-k8s-infra`'s `helm` provider reads to install Argo CD, and it's
   also what `kubeconfig_command` (below) is built from.
 
+Longhorn's UI (`longhorn-frontend` Service) is exposed as `NodePort`
+`30093`, reachable directly at `http://<cp1-ip or worker1-ip>:30093` — no
+tunnel needed. It has no auth of its own, so lock it down the same way as
+the other NodePorts below if that matters for your setup. `just endpoints`
+(from the `verda-cloud` root) prints this URL, along with `verda-k8s-infra`'s
+Argo CD/OpenBao/Prometheus/Grafana NodePorts, using the current cluster's
+actual IP.
+
 ### Why 2 Longhorn replicas, not the usual 3
 
 Longhorn defaults to 3 replicas per volume for full redundancy, but this
