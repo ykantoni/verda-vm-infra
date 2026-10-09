@@ -6,6 +6,20 @@ exec > /var/log/rke2-install.log 2>&1
 
 PUBLIC_IP="$(curl -fsSL -4 --max-time 5 https://ifconfig.me || hostname -I | awk '{print $1}')"
 
+# Longhorn (installed below via RKE2's helm-controller) needs open-iscsi
+# and a running iscsid on every node it schedules onto, which RKE2 doesn't
+# set up on its own.
+# cloud-init runs its own apt-get on first boot and may still hold the
+# package lock when this script starts — wait for it, then retry briefly
+# in case something else (e.g. unattended-upgrades) grabs it instead.
+cloud-init status --wait >/dev/null 2>&1 || true
+for i in $(seq 1 12); do
+  apt-get update -y && apt-get install -y open-iscsi nfs-common && break
+  sleep 5
+  [ "$i" -eq 12 ] && exit 1
+done
+systemctl enable --now iscsid
+
 curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="server" INSTALL_RKE2_VERSION="${rke2_version}" sh -
 
 mkdir -p /etc/rancher/rke2
@@ -39,6 +53,31 @@ spec:
     k8sServiceHost: "$PUBLIC_IP"
     k8sServicePort: "6443"
 HELMCONFIG
+
+# Longhorn isn't one of RKE2's bundled charts, so this uses HelmChart (not
+# HelmChartConfig) to tell RKE2's own helm-controller to install it fresh —
+# same auto-deploy mechanism, just introducing a new chart instead of
+# overriding one RKE2 already ships. Replica count matches this cluster's
+# node count (see verda-k8s-infra's README for why 2, not the usual 3).
+cat > /var/lib/rancher/rke2/server/manifests/longhorn.yaml <<LONGHORNCONFIG
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: longhorn
+  namespace: kube-system
+spec:
+  repo: https://charts.longhorn.io
+  chart: longhorn
+  version: ${longhorn_version}
+  targetNamespace: longhorn-system
+  createNamespace: true
+  valuesContent: |-
+    persistence:
+      defaultClass: true
+      defaultClassReplicaCount: 2
+    defaultSettings:
+      defaultReplicaCount: 2
+LONGHORNCONFIG
 
 systemctl enable rke2-server.service
 systemctl start rke2-server.service

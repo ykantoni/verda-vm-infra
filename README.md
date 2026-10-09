@@ -29,11 +29,20 @@ gets installed.
 ## What the RKE2 bootstrap does
 
 - Generates one shared join token (`random_password.rke2_token`).
+- Installs `open-iscsi`/`nfs-common` and starts `iscsid` on both nodes —
+  not needed by RKE2 itself, but required by Longhorn (below) before it
+  can attach any volume.
 - Connects to the control-plane IP over SSH and runs the RKE2 server
   installer (`get.rke2.io`), configured with that token, `cni: cilium`,
-  the pod/service CIDRs, `disable-kube-proxy: true`, and a
-  `HelmChartConfig` overriding Cilium's cluster name and kube-proxy
-  replacement.
+  the pod/service CIDRs, `disable-kube-proxy: true`, a `HelmChartConfig`
+  overriding Cilium's cluster name and kube-proxy replacement, and a
+  `HelmChart` manifest that has RKE2's own helm-controller install
+  [Longhorn](https://longhorn.io/) and set it as the cluster's default
+  `StorageClass` (`persistence.defaultClass: true`, replica count `2` to
+  match this cluster's node count — see "Why 2 replicas, not 3" below).
+  RKE2 ships with no `StorageClass` at all otherwise, so without this any
+  `PersistentVolumeClaim` — including ones from apps `verda-k8s-infra`
+  installs, like OpenBao — sits `Pending` forever.
 - Connects to the worker IP over SSH and runs the RKE2 agent installer,
   configured to join the control plane's `:9345` with the same token.
 - Re-runs a node's install only when its target host or the rendered
@@ -43,6 +52,16 @@ gets installed.
   gitignored file (`.terraform-kubeconfig.yaml`) — this is what
   `verda-k8s-infra`'s `helm` provider reads to install Argo CD, and it's
   also what `kubeconfig_command` (below) is built from.
+
+### Why 2 Longhorn replicas, not the usual 3
+
+Longhorn defaults to 3 replicas per volume for full redundancy, but this
+cluster only has 2 nodes, so `longhorn_version`'s `HelmChart` sets
+`defaultClassReplicaCount`/`defaultReplicaCount` to `2` instead. The
+trade-off: with 2 replicas, Longhorn survives one node going down, but
+can't rebuild a healthy third replica elsewhere until that node comes
+back — there's no spare node to rebalance onto. Fine for a lab/dev
+cluster, not what you'd want in production.
 
 ## Module structure
 
@@ -151,6 +170,7 @@ cp terraform.tfvars.example terraform.tfvars
 | `pod_cidr` | Pod IP address range (`cluster-cidr`) | `1.1.0.0/16` |
 | `service_cidr` | Service IP address range (`service-cidr`) | `2.2.0.0/16` |
 | `cilium_cluster_name` | Cilium's cluster identity name (`cluster.name` Helm value) | `verdaclu` |
+| `longhorn_version` | Longhorn Helm chart version | `1.13.0` |
 
 The current list of instance types is public:
 
@@ -232,9 +252,13 @@ just generate
 (Or, from this directory: `eval "$(terraform output -raw kubeconfig_command)"`.)
 This writes `~/verda_kubeconfig.yaml` — in your home directory, regardless
 of which directory you ran it from — rewriting the server address from
-`127.0.0.1` to the control-plane's public IP. Its TLS certificate already
-includes that IP (the install script sets `tls-san`), so no
-`--insecure-skip-tls-verify` is needed:
+`127.0.0.1` to the control-plane's public IP, and renaming RKE2's
+hardcoded `default` cluster/context/user entries to `cilium_cluster_name`
+(a cosmetic local label only — this doesn't touch Cilium's own cluster
+identity, which is configured separately via the `HelmChartConfig` in
+`modules/rke2`). Its TLS certificate already includes that IP (the
+install script sets `tls-san`), so no `--insecure-skip-tls-verify` is
+needed:
 
 ```bash
 kubectl --kubeconfig ~/verda_kubeconfig.yaml get nodes
@@ -341,6 +365,19 @@ the VMs: `just vm-destroy`.
   time, port `6443`) — if `cp1`'s IP changed since `cilium-agent` started,
   or a `ufw` rule blocks `6443` node-to-node, Cilium can't reach the API
   server and nothing comes up.
+- **Longhorn pods missing, or `PersistentVolumeClaim`s stuck `Pending`:**
+  Check it actually deployed and that `iscsid` is running on both nodes
+  (the real prerequisite Longhorn needs, which this isn't RKE2-native so
+  won't show up in `rke2-install.log`'s Helm section the way Cilium does):
+
+  ```bash
+  ssh root@<cp1-ip> kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get pods -n longhorn-system
+  ssh root@<ip> systemctl status iscsid   # on both nodes
+  ```
+
+  If `iscsid` isn't `active`, the `apt-get` step earlier in the script
+  likely never completed — check `/var/log/rke2-install.log` on that node
+  for the retry loop's output.
 - **Worker never joins:** Confirm the control-plane IP actually points at a
   running `rke2-server` and that the worker can reach it on `:9345` (not
   just `:22`) — a `ufw` rule on `cp1` that only opens `22` and `6443` would

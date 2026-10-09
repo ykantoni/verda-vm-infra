@@ -44,6 +44,12 @@ variable "cilium_cluster_name" {
   default     = "verdaclu"
 }
 
+variable "longhorn_version" {
+  description = "Longhorn Helm chart version to install, auto-deployed via RKE2's own helm-controller. Only used for role = \"server\"."
+  type        = string
+  default     = "1.13.0"
+}
+
 variable "host" {
   description = "Public IP (or hostname) of the already-running VM to bootstrap over SSH."
   type        = string

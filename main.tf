@@ -45,6 +45,7 @@ module "rke2_server" {
   pod_cidr             = var.pod_cidr
   service_cidr         = var.service_cidr
   cilium_cluster_name  = var.cilium_cluster_name
+  longhorn_version     = var.longhorn_version
 }
 
 module "rke2_agent" {

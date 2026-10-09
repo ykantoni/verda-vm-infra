@@ -40,8 +40,8 @@ output "hourly_cost_usd" {
 }
 
 output "kubeconfig_command" {
-  description = "Fetches the kubeconfig from the control-plane node and rewrites it to use the public IP, so kubectl works from outside Verda Cloud. Written to ~/verda_kubeconfig.yaml, in the local user's home directory, regardless of the current directory."
-  value       = "ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null ${var.ssh_user}@${module.cp1.ip} cat /etc/rancher/rke2/rke2.yaml | sed 's/127.0.0.1/${module.cp1.ip}/' > ~/verda_kubeconfig.yaml"
+  description = "Fetches the kubeconfig from the control-plane node, rewrites it to use the public IP so kubectl works from outside Verda Cloud, and renames RKE2's hardcoded \"default\" cluster/context/user entries to cilium_cluster_name — purely a local label in this file; unrelated to (and doesn't affect) Cilium's own cluster identity, which is already set via the HelmChartConfig in the rke2 module. Written to ~/verda_kubeconfig.yaml, in the local user's home directory, regardless of the current directory."
+  value       = "ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null ${var.ssh_user}@${module.cp1.ip} cat /etc/rancher/rke2/rke2.yaml | sed -e 's/127.0.0.1/${module.cp1.ip}/' -e 's/ default/ ${var.cilium_cluster_name}/g' > ~/verda_kubeconfig.yaml"
 }
 
 output "api_server_url" {
