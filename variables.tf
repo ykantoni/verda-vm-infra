@@ -16,6 +16,18 @@ variable "worker_instance_type" {
   default     = "CPU.4V.16G"
 }
 
+variable "gpu_instance_type" {
+  description = "Verda GPU instance type for the optional GPU worker node (gpu1). Examples: 1A100.22V, 1A100.40S.22V, 2A100.44V. Check `verda availability` first — GPU capacity is scarcer than CPU."
+  type        = string
+  default     = "1A100.22V"
+}
+
+variable "create_gpu_node" {
+  description = "Whether to create the optional GPU worker node (gpu1) at all. Defaults to false so a plain `terraform apply`/`just vm-apply` never silently provisions a (comparatively expensive) GPU instance — set to true deliberately (e.g. -var=create_gpu_node=true) when you actually want it."
+  type        = bool
+  default     = false
+}
+
 variable "image" {
   description = "Verda OS image. A plain Ubuntu image is used; Kubernetes is installed separately by verda-k8s-infra."
   type        = string

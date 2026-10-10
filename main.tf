@@ -27,6 +27,24 @@ module "worker1" {
   ssh_key_ids    = [verda_ssh_key.this.id]
 }
 
+# Optional GPU worker (see create_gpu_node) — e.g. for self-hosted vLLM.
+# NVIDIA drivers/container-toolkit need no setup here: verda-k8s-infra's
+# nvidia-gpu-operator Application is already installed and idle, waiting
+# for exactly this — its node-feature-discovery component detects the
+# GPU once this node joins and the operator installs everything itself.
+module "gpu1" {
+  source = "./modules/verda-vm"
+  count  = var.create_gpu_node ? 1 : 0
+
+  hostname       = "${var.name_prefix}-gpu1"
+  description    = "Kubernetes GPU worker node"
+  instance_type  = var.gpu_instance_type
+  image          = var.image
+  location       = var.location
+  os_volume_size = var.os_volume_size
+  ssh_key_ids    = [verda_ssh_key.this.id]
+}
+
 # Shared secret the worker uses to join the control-plane's RKE2 cluster.
 resource "random_password" "rke2_token" {
   length  = 48
@@ -56,6 +74,22 @@ module "rke2_agent" {
   token                = random_password.rke2_token.result
   server_url           = "https://${module.cp1.ip}:9345"
   host                 = module.worker1.ip
+  ssh_user             = var.ssh_user
+  ssh_private_key_path = var.ssh_private_key_path
+
+  # The agent needs the server already accepting connections on :9345.
+  depends_on = [module.rke2_server]
+}
+
+module "rke2_agent_gpu" {
+  source = "./modules/rke2"
+  count  = var.create_gpu_node ? 1 : 0
+
+  role                 = "agent"
+  rke2_version         = var.rke2_version
+  token                = random_password.rke2_token.result
+  server_url           = "https://${module.cp1.ip}:9345"
+  host                 = module.gpu1[0].ip
   ssh_user             = var.ssh_user
   ssh_private_key_path = var.ssh_private_key_path
 

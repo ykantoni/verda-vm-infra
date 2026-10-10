@@ -26,6 +26,24 @@ gets installed.
 | OS disk | 100 GB NVMe per VM |
 | Kubernetes | RKE2, with Cilium as the CNI (kube-proxy replaced) |
 
+### Optional third node: GPU worker (`gpu1`)
+
+Set `create_gpu_node = true` (and optionally override `gpu_instance_type`,
+default `1A100.22V` — a single A100) to add a third VM that joins the
+cluster as a plain RKE2 agent, same as `worker1`. It's gated behind this
+variable specifically so a routine `terraform apply`/`just vm-apply` never
+silently provisions a GPU instance — `count = var.create_gpu_node ? 1 : 0`
+on both `module.gpu1` and its RKE2 agent join, so leaving the variable at
+its default `false` produces a plan with zero GPU-related changes at all.
+
+No NVIDIA driver installation happens here, and none is needed: once this
+node joins, `verda-k8s-infra`'s `nvidia-gpu-operator` Application (already
+installed, previously idle for exactly this reason) detects the GPU via
+its node-feature-discovery component and installs the
+driver/container-toolkit/device-plugin itself, exposing `nvidia.com/gpu`
+as an allocatable resource — confirm with `kubectl describe node
+<gpu1-ip-or-hostname>` after it joins.
+
 ## What the RKE2 bootstrap does
 
 - Generates one shared join token (`random_password.rke2_token`).
@@ -266,6 +284,8 @@ cp terraform.tfvars.example terraform.tfvars
 | `name_prefix` | Hostname prefix | `k8s` |
 | `cp_instance_type` | CPU instance type for `cp1`, e.g. `CPU.8V.32G`, `CPU-TURIN.4V.16G` | `CPU.4V.16G` |
 | `worker_instance_type` | CPU instance type for `worker1` | `CPU.4V.16G` |
+| `create_gpu_node` | Whether to create the optional GPU worker (`gpu1`) at all | `false` |
+| `gpu_instance_type` | GPU instance type for `gpu1`, e.g. `1A100.22V`, `2A100.44V` — only matters if `create_gpu_node = true` | `1A100.22V` |
 | `image` | Verda OS image | `26.04.base` |
 | `location` | `FIN-01`, `FIN-02` or `FIN-03` | `FIN-03` |
 | `os_volume_size` | OS disk size in GB | `100` |
