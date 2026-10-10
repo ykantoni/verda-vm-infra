@@ -27,15 +27,15 @@ variable "server_url" {
 }
 
 variable "pod_cidr" {
-  description = "Pod IP address range (cluster-cidr). Only used for role = \"server\" — the CNI and its CIDRs are cluster-wide settings set once on the server."
+  description = "Pod IP address range (cluster-cidr). Only used for role = \"server\" — the CNI and its CIDRs are cluster-wide settings set once on the server. Defaults to RKE2/k3s's own standard range — avoid real publicly-routable ranges here (see root variables.tf's pod_cidr for why)."
   type        = string
-  default     = "1.1.0.0/16"
+  default     = "10.42.0.0/16"
 }
 
 variable "service_cidr" {
-  description = "Service IP address range (service-cidr). Only used for role = \"server\"."
+  description = "Service IP address range (service-cidr). Only used for role = \"server\". Defaults to RKE2/k3s's own standard range, for the same reason as pod_cidr."
   type        = string
-  default     = "2.2.0.0/16"
+  default     = "10.43.0.0/16"
 }
 
 variable "cilium_cluster_name" {

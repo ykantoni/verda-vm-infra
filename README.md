@@ -293,8 +293,8 @@ cp terraform.tfvars.example terraform.tfvars
 | `ssh_private_key_path` | Path to the matching private key, used to bootstrap RKE2 over SSH | `~/.ssh/id_ed25519` |
 | `ssh_user` | SSH user on both VMs | `root` |
 | `rke2_version` | RKE2 version to install | `v1.37.1+rke2r1` |
-| `pod_cidr` | Pod IP address range (`cluster-cidr`) | `1.1.0.0/16` |
-| `service_cidr` | Service IP address range (`service-cidr`) | `2.2.0.0/16` |
+| `pod_cidr` | Pod IP address range (`cluster-cidr`) | `10.42.0.0/16` |
+| `service_cidr` | Service IP address range (`service-cidr`) | `10.43.0.0/16` |
 | `cilium_cluster_name` | Cilium's cluster identity name (`cluster.name` Helm value) | `verdaclu` |
 | `longhorn_version` | Longhorn Helm chart version | `1.13.0` |
 
@@ -315,11 +315,17 @@ verda availability --location FIN-03 --type CPU.4V.16G
 `update.rke2.io/v1-release/channels`, which has been returning 404 (an
 upstream outage, not this repo) — pinning a real tag bypasses it entirely.
 
-`1.1.0.0/16`/`2.2.0.0/16` are real, publicly-routable internet ranges (not
-RFC1918 private space) — `1.1.1.1` in particular is Cloudflare's public DNS
-resolver. Using them as pod/service CIDRs is valid, but if anything inside
-the cluster ever needs to reach the real `1.1.1.1`, it'll get silently
-shadowed by the pod network instead.
+`pod_cidr`/`service_cidr` default to RKE2/k3s's own standard ranges
+(`10.42.0.0/16`/`10.43.0.0/16`), entirely within RFC1918 private space.
+This wasn't always the default here — an earlier version of this repo
+used `1.1.0.0/16`/`2.2.0.0/16` (real, publicly-routable internet ranges)
+specifically because they're memorable, but `1.1.1.1` is Cloudflare's
+public DNS resolver and falls inside `1.1.0.0/16`. In practice this meant
+Cilium's ipcache classified the real `1.1.1.1` as an in-cluster pod
+address, and silently dropped any packet actually meant for it with
+`"Stale or unroutable IP"` — including CoreDNS's own default upstream
+forward target, breaking any DNS query that needed to leave the cluster.
+Don't repeat that mistake if you ever customize these.
 
 ## 4. Deploy
 

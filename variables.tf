@@ -25,7 +25,7 @@ variable "gpu_instance_type" {
 variable "create_gpu_node" {
   description = "Whether to create the optional GPU worker node (gpu1) at all. Defaults to false so a plain `terraform apply`/`just vm-apply` never silently provisions a (comparatively expensive) GPU instance — set to true deliberately (e.g. -var=create_gpu_node=true) when you actually want it."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "image" {
@@ -71,15 +71,15 @@ variable "rke2_version" {
 }
 
 variable "pod_cidr" {
-  description = "Pod IP address range (cluster-cidr)."
+  description = "Pod IP address range (cluster-cidr). RKE2/k3s's own default — deliberately not a custom range: an earlier 1.1.0.0/16 choice overlapped with 1.1.1.1 (Cloudflare's public DNS, CoreDNS's default upstream forwarder), which made Cilium misclassify that real external IP as an in-cluster pod address and silently drop traffic to it (\"Stale or unroutable IP\")."
   type        = string
-  default     = "1.1.0.0/16"
+  default     = "10.42.0.0/16"
 }
 
 variable "service_cidr" {
-  description = "Service IP address range (service-cidr)."
+  description = "Service IP address range (service-cidr). RKE2/k3s's own default, for the same reason as pod_cidr above — entirely within RFC1918 private space, no collision risk with real public IPs."
   type        = string
-  default     = "2.2.0.0/16"
+  default     = "10.43.0.0/16"
 }
 
 variable "cilium_cluster_name" {
