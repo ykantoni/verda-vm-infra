@@ -38,12 +38,18 @@ CONFIG
 # kube-proxy replacement that disable-kube-proxy above requires (k8sServiceHost
 # must be set explicitly in this mode, since there's no kube-proxy-provided
 # ClusterIP route for cilium-agent to reach the API server through on its
-# own), and Gateway API support. Gateway API's CRDs come from RKE2's own
-# bundled rke2-gateway-api-crd chart (installed automatically — RKE2, unlike
-# upstream Kubernetes, ships these itself) — no separate CRD install needed
-# here. gatewayClass.create is set to false since we create our own
-# GatewayClass below (with a parametersRef Cilium's "auto" mode has no way
-# to attach), rather than relying on Cilium's own auto-created one.
+# own), Gateway API support, and Hubble (Cilium's flow observability —
+# the agent-side collector is on by default, this turns on Relay, which
+# aggregates flows cluster-wide, and the UI on top of it). Gateway API's
+# CRDs come from RKE2's own bundled rke2-gateway-api-crd chart (installed
+# automatically — RKE2, unlike upstream Kubernetes, ships these itself) —
+# no separate CRD install needed here. gatewayClass.create is set to
+# false since we create our own GatewayClass below (with a parametersRef
+# Cilium's "auto" mode has no way to attach), rather than relying on
+# Cilium's own auto-created one. Hubble UI's Service is NodePort for the
+# same reason every other UI in this cluster is: Verda terminates ports
+# 80/443 at its own edge, so a LoadBalancer is never reachable here (see
+# the Gateway API section below for the full explanation).
 mkdir -p /var/lib/rancher/rke2/server/manifests
 cat > /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml <<HELMCONFIG
 apiVersion: helm.cattle.io/v1
@@ -62,6 +68,15 @@ spec:
       enabled: true
       gatewayClass:
         create: "false"
+    hubble:
+      enabled: true
+      relay:
+        enabled: true
+      ui:
+        enabled: true
+        service:
+          type: NodePort
+          nodePort: 30094
 HELMCONFIG
 
 # Longhorn isn't one of RKE2's bundled charts, so this uses HelmChart (not

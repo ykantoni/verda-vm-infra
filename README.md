@@ -127,6 +127,38 @@ endpoints` printed. This is purely additive: every NodePort above keeps
 working exactly as before, this is just a second way to reach the same
 four apps through one port instead of four.
 
+### Cilium service mesh features and Hubble
+
+Cilium doesn't have a single "enable service mesh" switch — it's an
+umbrella over several independent features, most of which this cluster
+already turns on: `kubeProxyReplacement: true` (eBPF-based service
+load-balancing instead of iptables), the embedded Envoy L7 proxy
+(enabled by default), and the Gateway API support described above.
+ClusterMesh (multi-cluster) and SPIFFE-based mutual authentication
+(deprecated upstream as of Cilium 1.21) are the remaining pieces — both
+skipped here since neither make sense for a single 2-node lab cluster.
+
+What's added on top is [Hubble](https://docs.cilium.io/en/stable/observability/hubble/),
+Cilium's own flow observability: a live map of what's talking to what,
+down to individual L3-L7 flow records. `hubble.enabled` (the per-node
+flow collector) defaults to `true` already; the bootstrap turns on
+`hubble.relay` (aggregates flows cluster-wide) and `hubble.ui` (a
+browser UI on top of Relay), with the UI's Service set to `NodePort`
+`30094` for the same reason the Gateway is `NodePort` above (Verda
+terminates 80/443 at its own edge). Reachable directly at
+`http://<cp1-ip or worker1-ip>:30094` — no tunnel, no auth, so lock it
+down the same way as the other NodePorts if that matters for your setup.
+
+(One gotcha worth knowing if you ever add more Cilium Helm values here:
+the RKE2-bundled `rke2-cilium` chart's own validation rejects
+`hubble.relay.enabled: true` unless `hubble.enabled: true` is *also*
+set explicitly in the values passed to it — even though upstream docs
+say `hubble.enabled` already defaults to `true`. Leaving it implicit
+fails the chart install outright, which cascades into the CNI never
+coming up and both nodes stuck `NotReady` indefinitely — there's no
+partial-failure recovery for a broken CNI chart, so this is worth
+getting right the first time.)
+
 ### Why 2 Longhorn replicas, not the usual 3
 
 Longhorn defaults to 3 replicas per volume for full redundancy, but this
