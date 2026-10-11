@@ -6,6 +6,20 @@ exec > /var/log/rke2-install.log 2>&1
 
 PUBLIC_IP="$(curl -fsSL -4 --max-time 5 https://ifconfig.me || hostname -I | awk '{print $1}')"
 
+# Verda's GPU instance types (unlike its CPU types, where these are
+# hardware-fixed off) ship with UDP tunnel/VXLAN segmentation offload
+# enabled on eth0. This corrupts Cilium's VXLAN-encapsulated overlay
+# traffic on receipt — ICMP keeps working (not tunneled the same way),
+# but real pod-to-pod TCP/UDP from this node silently breaks (DNS
+# timeouts, Argo CD unable to reach its own repo-server, etc.), even
+# though Cilium's own node-to-node health check can look fine. Confirmed
+# by hand multiple times on 1A100.22V; disabling it before RKE2/Cilium
+# ever start avoids the issue entirely. This node is CPU-only today, but
+# fixing it unconditionally here too means a future GPU control-plane
+# node wouldn't silently reintroduce the bug. `|| true`: harmless no-op
+# on instance types where these are already fixed off.
+ethtool -K eth0 tx-udp_tnl-segmentation off tx-udp_tnl-csum-segmentation off tx-udp-segmentation off || true
+
 # Longhorn (installed below via RKE2's helm-controller) needs open-iscsi
 # and a running iscsid on every node it schedules onto, which RKE2 doesn't
 # set up on its own.
